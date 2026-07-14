@@ -1,0 +1,4 @@
+interface:
+  display_name: "软著三件套生成器"
+  short_description: "从系统源码生成说明书、申请表底稿和60页代码交存材料"
+  default_prompt: "使用 $generate-cn-software-copyright-kit 分析当前系统源码并生成可提交前复核的软著三件套材料。"

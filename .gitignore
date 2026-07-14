@@ -1,0 +1,33 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+
+# Generated copyright workspaces and previews
+copyright-work/
+final/
+output/
+outputs/
+previews/
+*.provenance.json
+*.audit.json
+qa_report.json
+qa_report.md
+pagination_report.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak

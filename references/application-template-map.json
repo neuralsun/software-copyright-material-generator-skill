@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "asset": "../assets/application-form-template.docx",
+  "asset_sha256_at_creation": "32bf28399357d535fa9af178ae0842e580a1c9f99bb3bdda418a7ff22ae1234f",
+  "template_role": "通用填报底稿，不替代接收平台当期官方表单",
+  "structure": {
+    "tables": 1,
+    "rows": 37,
+    "logical_grid_columns": 13,
+    "expected_rendered_pages": 3
+  },
+  "field_cells_zero_based": {
+    "software.full_name": [1, 4],
+    "software.classification_no": [1, 12],
+    "software.short_name": [2, 4],
+    "software.version": [2, 12],
+    "software.original": [3, 2],
+    "software.completion_date": [5, 4],
+    "software.first_publication_date": [5, 12],
+    "software.first_publication_place": [6, 12],
+    "software.development_mode": [7, 4],
+    "copyright_owners[0].identity": [9, 3],
+    "copyright_owners[0].nationality": [9, 8],
+    "copyright_owners[0].address": [9, 11],
+    "copyright_owners[1].identity": [10, 3],
+    "copyright_owners[1].nationality": [10, 8],
+    "copyright_owners[1].address": [10, 11],
+    "software.rights_scope": [15, 3],
+    "software.hardware_environment": [18, 1],
+    "software.software_environment": [20, 1],
+    "software.programming_languages": [22, 1],
+    "software.source_line_count": [23, 1],
+    "software.function_and_technical_features": [25, 1],
+    "applicant_contact_block_start": [26, 0],
+    "agent_contact_block_start": [30, 0],
+    "deposit.mode.general": [34, 1],
+    "deposit.mode.exceptional": [35, 1],
+    "signature_block": [36, 0]
+  },
+  "protected_rules": [
+    "不得新增、删除或重排37行模板结构",
+    "功能技术说明去空白后须为500至1000字",
+    "法律身份字段缺失时必须留白并报告，不得推断",
+    "正式提交前必须核对当期官方表单和签章要求"
+  ]
+}
