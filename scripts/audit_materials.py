@@ -29,6 +29,21 @@ HEX_SHA256 = re.compile(r"[0-9a-f]{64}", re.I)
 XML_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 TEXT_PARTS = re.compile(r"^word/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+DEFAULT_REQUIRED_MANUAL_CHAPTERS = [
+    "软件设计说明",
+    "软件使用说明",
+    "软硬件运行环境",
+    "知识产权声明",
+]
+FIGURE_REVIEW_FLAGS = {
+    "software_name_correct",
+    "old_name_absent",
+    "pii_absent_or_redacted",
+    "credential_absent",
+    "error_absent",
+    "splice_absent",
+    "manually_reviewed",
+}
 
 
 def load_json(path: Path | None) -> dict[str, Any]:
@@ -115,11 +130,20 @@ def docx_package_info(path: Path) -> dict[str, Any]:
         metadata_text: list[str] = []
         instructions: list[str] = []
         numpages_values: list[str] = []
+        text_colors: list[dict[str, str]] = []
         revision_nodes = 0
         hidden_nodes = 0
         for name in package.namelist():
             if TEXT_PARTS.match(name):
                 root = document if name == "word/document.xml" else parse_xml(package.read(name))
+                for node in root.xpath(".//w:rPr/w:color", namespaces={"w": W}):
+                    text_colors.append(
+                        {
+                            "part": name,
+                            "value": node.get(f"{{{W}}}val", ""),
+                            "theme": node.get(f"{{{W}}}themeColor", ""),
+                        }
+                    )
                 instructions.extend(" ".join(item.split()) for item in root.xpath(".//w:instrText/text()", namespaces={"w": W}))
                 instructions.extend(" ".join(item.split()) for item in root.xpath(".//w:fldSimple/@w:instr", namespaces={"w": W}))
                 values = [str(item) for item in root.xpath(".//w:t/text()", namespaces={"w": W})]
@@ -152,6 +176,7 @@ def docx_package_info(path: Path) -> dict[str, Any]:
             "metadata_text": "\n".join(metadata_text),
             "field_instructions": instructions,
             "numpages_values": numpages_values,
+            "text_colors": text_colors,
             "update_fields": update_fields is not None
             and update_fields.get(f"{{{W}}}val", "true").lower() not in {"0", "false", "off"},
             "media_count": len([name for name in package.namelist() if name.startswith("word/media/") and not name.endswith("/")]),
@@ -428,6 +453,126 @@ def valid_screenshot(path: Path) -> bool:
         return False
 
 
+def normalized_chapter_title(value: Any) -> str:
+    return re.sub(
+        r"^\s*(?:第\s*)?[0-9一二三四五六七八九十]+\s*(?:章)?[\s.、．-]*",
+        "",
+        str(value or "").strip(),
+    )
+
+
+def audit_manual_structure(
+    manual_content: dict[str, Any], manual_cfg: dict[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    required_titles = [normalized_chapter_title(value) for value in DEFAULT_REQUIRED_MANUAL_CHAPTERS]
+    raw_required = manual_cfg.get("required_chapters", DEFAULT_REQUIRED_MANUAL_CHAPTERS)
+    configured_titles = (
+        [normalized_chapter_title(value) for value in raw_required if str(value or "").strip()]
+        if isinstance(raw_required, list)
+        else []
+    )
+    raw_chapters = manual_content.get("chapters")
+    chapters = raw_chapters if isinstance(raw_chapters, list) else []
+    actual_titles = [
+        normalized_chapter_title(chapter.get("title"))
+        for chapter in chapters
+        if isinstance(chapter, dict)
+    ]
+    if configured_titles != required_titles:
+        add_issue(errors, "manual-required-chapters", "The fixed four-chapter manual structure cannot be overridden", configured=configured_titles)
+    if actual_titles != required_titles:
+        add_issue(
+            errors,
+            "manual-chapters",
+            "Manual chapters must use the complete software-copyright structure and end with the environment and IP chapters",
+            expected=required_titles,
+            actual=actual_titles,
+        )
+    return errors, {"required_chapters": required_titles, "actual_chapters": actual_titles}
+
+
+def audit_figures_manifest(
+    figures: dict[str, Any], figures_base: Path, evidence: dict[str, Any]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    raw_figures = figures.get("figures")
+    items = raw_figures if isinstance(raw_figures, list) else []
+    if not items:
+        add_issue(errors, "figures-empty", "figures_manifest.json contains no figures")
+    evidence_index = {
+        str(feature.get("feature_id") or feature.get("id") or "").strip(): feature
+        for feature in evidence_features(evidence)
+        if str(feature.get("feature_id") or feature.get("id") or "").strip()
+    }
+    runtime_coverage: set[str] = set()
+    identifiers: set[str] = set()
+    runtime_count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            add_issue(errors, "figure-entry", "Figure manifest entry must be an object")
+            continue
+        figure_id = str(item.get("id") or "").strip()
+        if not figure_id or figure_id in identifiers:
+            add_issue(errors, "figure-id", "Figure id is missing or duplicated", figure_id=figure_id)
+        identifiers.add(figure_id)
+        kind = str(item.get("kind") or "").strip().lower()
+        if kind == "placeholder":
+            add_issue(errors, "figure-placeholder", "Placeholder figure remains in the final figure manifest", figure_id=figure_id)
+            continue
+        raw_path = item.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            add_issue(errors, "figure-path", "Figure path is missing", figure_id=figure_id)
+            continue
+        path = Path(raw_path).expanduser()
+        path = (path if path.is_absolute() else figures_base / path).resolve()
+        if not path.is_file() or path.stat().st_size <= 0:
+            add_issue(errors, "figure-missing", "Figure file does not exist", figure_id=figure_id, path=str(path))
+            continue
+        if kind == "runtime_screenshot":
+            runtime_count += 1
+            if not valid_screenshot(path):
+                add_issue(errors, "figure-invalid-screenshot", "Runtime screenshot is unreadable or too small", figure_id=figure_id)
+            feature_ids = {
+                str(value).strip()
+                for value in item.get("feature_ids", [])
+                if str(value).strip()
+            } if isinstance(item.get("feature_ids"), list) else set()
+            if not feature_ids:
+                add_issue(errors, "figure-feature-links", "Runtime screenshot has no feature_ids", figure_id=figure_id)
+            for feature_id in feature_ids:
+                if feature_id not in evidence_index:
+                    add_issue(errors, "figure-feature-unknown", "Screenshot references an unknown feature", figure_id=figure_id, feature_id=feature_id)
+                else:
+                    runtime_coverage.add(feature_id)
+            capture_tool = str(item.get("capture_tool") or item.get("capture_method") or "").strip()
+            if not capture_tool:
+                add_issue(errors, "figure-capture-provenance", "Runtime screenshot does not record its browser/capture tool", figure_id=figure_id)
+            review = item.get("review") if isinstance(item.get("review"), dict) else {}
+            missing_flags = sorted(flag for flag in FIGURE_REVIEW_FLAGS if review.get(flag) is not True)
+            if missing_flags:
+                add_issue(errors, "figure-review", "Runtime screenshot review is incomplete", figure_id=figure_id, fields=missing_flags)
+        elif kind not in {"generated_diagram", "diagram"}:
+            add_issue(warnings, "figure-kind", "Figure kind is not a recognized runtime screenshot or generated diagram", figure_id=figure_id, kind=kind)
+    required_runtime = {
+        feature_id
+        for feature_id, feature in evidence_index.items()
+        if as_int(feature.get("evidence_level", feature.get("level")), -1) == 4
+        and feature.get("include_in_manual", True) is not False
+        and str(feature.get("status") or "implemented").strip().lower()
+        not in {"excluded", "not_implemented", "unimplemented"}
+    }
+    missing_runtime = sorted(required_runtime - runtime_coverage)
+    if missing_runtime:
+        add_issue(errors, "figure-runtime-coverage", "Level-4 manual features lack reviewed runtime screenshots", feature_ids=missing_runtime)
+    return errors, warnings, {
+        "figures": len(items),
+        "runtime_screenshots": runtime_count,
+        "runtime_feature_ids": sorted(runtime_coverage),
+    }
+
+
 def audit_feature_evidence(
     evidence: dict[str, Any],
     evidence_base: Path,
@@ -531,9 +676,25 @@ def audit_feature_evidence(
             add_issue(errors, "manual-feature-unclaimable", "Manual claims a feature below evidence level 3", feature_id=feature_id, level=level)
         if feature_id in core and level < 4:
             add_issue(errors, "manual-core-feature", "Core/screenshot manual feature must have evidence level 4", feature_id=feature_id, level=level)
-    unreferenced = sorted(set(indexed) - claimed)
-    if unreferenced:
-        add_issue(warnings, "evidence-unreferenced", "Evidence contains features not referenced by manual_content", feature_ids=unreferenced)
+    required_manual: set[str] = set()
+    deliberately_excluded: set[str] = set()
+    for feature_id, feature in indexed.items():
+        level = as_int(feature.get("evidence_level", feature.get("level")), -1)
+        status = str(feature.get("status") or "implemented").strip().lower()
+        if feature.get("include_in_manual") is False:
+            deliberately_excluded.add(feature_id)
+            reason = str(feature.get("manual_exclusion_reason") or feature.get("exclusion_reason") or "").strip()
+            if level >= 3 and not reason:
+                add_issue(errors, "manual-feature-exclusion", "Implemented feature excluded from the manual without a reason", feature_id=feature_id)
+            continue
+        if level >= 3 and status not in {"excluded", "not_implemented", "unimplemented"}:
+            required_manual.add(feature_id)
+    missing_claimable = sorted(required_manual - claimed)
+    if missing_claimable:
+        add_issue(errors, "manual-feature-coverage", "Implemented user functions are missing from manual_content", feature_ids=missing_claimable)
+    remaining_unreferenced = sorted(set(indexed) - claimed - deliberately_excluded - required_manual)
+    if remaining_unreferenced:
+        add_issue(warnings, "evidence-unreferenced", "Low-evidence or non-implemented features are not referenced by manual_content", feature_ids=remaining_unreferenced)
     return errors, warnings, {"features": len(indexed), "manual_feature_ids": sorted(claimed), "core_feature_ids": sorted(core)}
 
 
@@ -544,6 +705,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--deposit-manifest", type=Path)
     parser.add_argument("--evidence", type=Path, help="feature_evidence.json")
+    parser.add_argument("--figures", type=Path, help="figures_manifest.json with screenshot provenance and review")
     parser.add_argument("--manual-content", type=Path, help="manual_content.json with feature_id links")
     parser.add_argument("--manual", required=True, type=Path)
     parser.add_argument("--application", required=True, type=Path)
@@ -559,6 +721,7 @@ def main() -> int:
     manifest = load_json(args.manifest)
     deposit_manifest = load_json(args.deposit_manifest)
     evidence = load_json(args.evidence)
+    figures = load_json(args.figures)
     manual_content = load_json(args.manual_content)
     software = config.get("software") or {}
     name = str(software.get("full_name") or "").strip()
@@ -574,6 +737,7 @@ def main() -> int:
         ("source-manifest", args.manifest),
         ("deposit-manifest", args.deposit_manifest),
         ("feature-evidence", args.evidence),
+        ("figures-manifest", args.figures),
         ("manual-content", args.manual_content),
     ):
         if path is None:
@@ -629,6 +793,13 @@ def main() -> int:
         )
         errors.extend(evidence_errors)
         warnings.extend(evidence_warnings)
+    figure_stats: dict[str, Any] = {}
+    if args.figures:
+        figure_errors, figure_warnings, figure_stats = audit_figures_manifest(
+            figures, args.figures.parent.resolve(), evidence
+        )
+        errors.extend(figure_errors)
+        warnings.extend(figure_warnings)
 
     artifacts = {
         "manual": (args.manual, docx_package_info(args.manual)),
@@ -677,9 +848,33 @@ def main() -> int:
 
     manual_info = artifacts["manual"][1]
     manual_cfg = config.get("manual") or {}
-    target_range = manual_cfg.get("target_page_range") or [8, 30]
-    if manual_info["media_count"] < int(manual_cfg.get("minimum_images", 2)):
+    structure_errors, manual_structure_stats = audit_manual_structure(manual_content, manual_cfg)
+    errors.extend(structure_errors)
+    non_black_text = [
+        item
+        for item in manual_info["text_colors"]
+        if str(item.get("value") or "").upper() != "000000"
+        or bool(item.get("theme"))
+    ]
+    if bool(manual_cfg.get("require_black_text", True)) and non_black_text:
+        add_issue(
+            errors,
+            "manual-text-color",
+            "Manual contains non-black or theme-controlled text",
+            values=non_black_text[:20],
+        )
+    target_range = manual_cfg.get("target_page_range") or [8, 40]
+    if manual_info["media_count"] < int(manual_cfg.get("minimum_images", 4)):
         add_issue(errors, "manual-images", "Manual has too few embedded images", count=manual_info["media_count"])
+    minimum_runtime = int(manual_cfg.get("minimum_runtime_screenshots", 2))
+    if figure_stats.get("runtime_screenshots", 0) < minimum_runtime:
+        add_issue(
+            errors,
+            "manual-runtime-screenshots",
+            "Manual has too few reviewed runtime screenshots",
+            count=figure_stats.get("runtime_screenshots", 0),
+            minimum=minimum_runtime,
+        )
     if not (int(target_range[0]) <= manual_info["pages"] <= int(target_range[1])):
         add_issue(warnings, "manual-page-range", "Manual page count is outside the configured recommended range", pages=manual_info["pages"], target=target_range)
 
@@ -867,6 +1062,8 @@ def main() -> int:
         "code_nonblank_paragraphs": len(code_lines),
         "source_snapshot": snapshot_stats,
         "feature_evidence": evidence_stats,
+        "figures": figure_stats,
+        "manual_structure": manual_structure_stats,
         "pdf_pages": pdf_counts,
         "official_form_note": "This Word application is a drafting aid. Use the current receiving platform's official form when required.",
         "external_similarity_note": "Local checks cannot guarantee non-overlap with an unknown registration-agency code corpus.",

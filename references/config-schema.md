@@ -85,8 +85,16 @@
     "forbidden_terms": []
   },
   "manual": {
-    "target_page_range": [8, 30],
-    "minimum_images": 2
+    "target_page_range": [8, 40],
+    "minimum_images": 4,
+    "minimum_runtime_screenshots": 2,
+    "require_black_text": true,
+    "required_chapters": [
+      "软件设计说明",
+      "软件使用说明",
+      "软硬件运行环境",
+      "知识产权声明"
+    ]
   },
   "application": {"expected_pages": 3},
   "confirmations": {
@@ -108,7 +116,7 @@
 
 枚举与约束：
 
-- `version` 使用 `V1.0`、`V1.0.0` 等明确格式；三份材料、源代码版本常量和截图必须一致。
+- 新申请默认使用 `V1.0`。不得从包版本、接口版本或构建号自动改写登记版本；用户明确确认其他登记版本时才使用其原值。三份材料、截图、页眉页脚、核心属性和交存 provenance 必须逐字一致。
 - `development_mode` 支持 `independent/独立开发`、`collaborative/合作开发`、`commissioned/委托开发`、`assigned/下达任务开发`。
 - `rights_scope.mode` 支持 `all/全部` 或 `partial/部分权利`；部分权利必须写 `details`。
 - 当前申请表生成器只处理原创软件与一般交存；不满足时停止并改用适合的正式流程，不要强行套模板。
@@ -148,6 +156,8 @@
       "claim": "<允许写进说明书的精确表述>",
       "evidence_level": 4,
       "status": "implemented",
+      "include_in_manual": true,
+      "manual_exclusion_reason": "",
       "required_layers": ["ui", "api", "domain"],
       "user_path": ["<进入入口>", "<提交操作>", "<结果反馈>"],
       "code_refs": [
@@ -170,6 +180,8 @@
 
 `layer` 使用 `ui`、`api`、`business`、`service`、`persistence` 等明确值。所有路径必须存在于冻结 manifest，行号不得越界。Web 功能默认要求 UI、API 和一个业务端层。桌面、CLI、插件或库应显式填写符合真实调用边界的 `required_layers`，例如 `["ui", "domain"]` 或 `["api", "domain"]`，不能为通过检查而伪造不存在的层。4 级还必须 `runtime_verified=true` 且至少有一张真实存在的截图。
 
+等级 3—4 且 `status=implemented` 的用户功能默认必须写入说明书。确有理由不纳入时显式设置 `include_in_manual=false`，并填写 `manual_exclusion_reason`；不能通过漏建功能条目或降低证据等级让说明书看起来完整。
+
 ## 5. `figures_manifest.json`
 
 ```json
@@ -184,6 +196,9 @@
       "caption": "<与界面内容一致的图题>",
       "captured_at": "YYYY-MM-DDTHH:MM:SS+08:00",
       "source": "local isolated runtime",
+      "capture_tool": "codex_in_app_browser",
+      "runtime_url": "http://127.0.0.1:<port>/<path>",
+      "viewport": "1440x900",
       "review": {
         "software_name_correct": true,
         "old_name_absent": true,
@@ -200,6 +215,8 @@
 
 架构图和流程图使用 `kind=generated_diagram`，并列出其证据功能 ID。缺图占位使用 `kind=placeholder`，它永远不能通过最终门禁。
 
+`capture_tool` 使用可复核值，例如 `user_chrome`、`codex_in_app_browser`、`playwright_chromium` 或 `windows_computer_use`。Chrome 插件失败后改用 Codex 内置浏览器时仍记录实际使用的工具，不把插件错误写成系统功能错误。每个纳入说明书的 4 级功能必须至少被一张 `runtime_screenshot` 覆盖。
+
 ## 6. `diagrams.json`
 
 ```json
@@ -207,6 +224,11 @@
   "architecture": {
     "title": "系统总体架构",
     "output": "architecture.png",
+    "background_top": "#FFFFFF",
+    "background_bottom": "#FFFFFF",
+    "title_color": "#000000",
+    "palette": [["#FFFFFF", "#000000"], ["#F2F2F2", "#000000"]],
+    "connector_color": "#000000",
     "layers": [
       {"id": "ui", "label": "交互层", "title": "用户界面", "nodes": [{"id": "portal", "label": "业务入口"}]},
       {"id": "service", "label": "业务层", "title": "业务服务", "nodes": [{"id": "core", "label": "核心处理"}]}
@@ -216,6 +238,9 @@
   "flow": {
     "title": "核心业务流程",
     "output": "workflow.png",
+    "background_top": "#FFFFFF",
+    "background_bottom": "#FFFFFF",
+    "title_color": "#000000",
     "lanes": [{"id": "user", "label": "用户"}, {"id": "system", "label": "系统"}],
     "nodes": [
       {"id": "start", "lane": "user", "column": 0, "label": "进入功能", "shape": "terminal"},
@@ -240,6 +265,12 @@
     "body_page_start": 1,
     "allow_missing_images": false,
     "allow_missing_captions": false,
+    "required_chapters": ["软件设计说明", "软件使用说明", "软硬件运行环境", "知识产权声明"],
+    "styles": {
+      "body_font": "宋体",
+      "heading_font": "黑体",
+      "latin_font": "Times New Roman"
+    },
     "toc": {"title": "目录", "min_level": 1, "max_level": 3},
     "footer": {"prefix": "第 ", "suffix": " 页", "show_section_total": true}
   },
@@ -273,12 +304,46 @@
           ]
         }
       ]
+    },
+    {
+      "title": "3 软硬件运行环境",
+      "sections": [
+        {
+          "title": "3.1 硬件运行环境",
+          "blocks": [{"type": "paragraph", "text": "<处理器、内存、存储、显示和网络条件>"}]
+        },
+        {
+          "title": "3.2 软件运行环境",
+          "blocks": [{"type": "paragraph", "text": "<操作系统、运行时、数据库和浏览器等实际版本>"}]
+        },
+        {
+          "title": "3.3 运行条件与环境边界",
+          "blocks": [{"type": "paragraph", "text": "<外部服务、模型、设备、网络及降级边界>"}]
+        }
+      ]
+    },
+    {
+      "title": "4 知识产权声明",
+      "sections": [
+        {
+          "title": "4.1 声明范围",
+          "blocks": [{"type": "paragraph", "text": "本说明书仅描述经源码和运行证据确认的软件功能；权属以正式申请表、证明材料和签章文件为准。"}]
+        },
+        {
+          "title": "4.2 第三方软件与资料边界",
+          "blocks": [{"type": "paragraph", "text": "<说明第三方依赖、模型、数据和素材不作为自有源程序主张的边界>"}]
+        },
+        {
+          "title": "4.3 使用、复制与保密要求",
+          "blocks": [{"type": "paragraph", "text": "<按用户确认的实际要求表述，不虚构许可主体>"}]
+        }
+      ]
     }
   ]
 }
 ```
 
-使用 `feature_ids` 标记一般已实现功能，使用 `core_feature_ids` 标记配有运行截图或作为核心操作说明的功能；后者必须达到证据等级 4。块类型：`paragraph` 支持 `text`、`alignment`、`bold`、`italic`；`heading` 支持 `text`、`level`；`figure` 支持 `path`、`caption`、`width_cm`；`table` 支持 `caption`、`headers`、`rows`、`widths_cm`。图片路径相对 JSON 文件或 `--base-dir` 解析。目录和页码是动态域，必须经 Office 刷新。
+使用 `feature_ids` 标记一般已实现功能，使用 `core_feature_ids` 标记配有运行截图或作为核心操作说明的功能；后者必须达到证据等级 4。四章顺序是生成器和终检的默认硬约束。块类型：`paragraph` 支持 `text`、`alignment`、`bold`、`italic`；软著说明书不允许通过 `color` 设置非黑色文字。`heading` 支持 `text`、`level`；`figure` 支持 `path`、`caption`、`width_cm`；`table` 支持 `caption`、`headers`、`rows`、`widths_cm`。图片路径相对 JSON 文件或 `--base-dir` 解析。目录和页码是动态域，必须经 Office 刷新。
 
 ## 8. `deposit_config.json`
 

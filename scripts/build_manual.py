@@ -30,6 +30,13 @@ from docx.shared import Cm, Pt, RGBColor
 DEFAULT_EAST_ASIA_FONT = "宋体"
 DEFAULT_HEADING_FONT = "黑体"
 DEFAULT_LATIN_FONT = "Times New Roman"
+BLACK = RGBColor(0, 0, 0)
+DEFAULT_REQUIRED_CHAPTERS = [
+    "软件设计说明",
+    "软件使用说明",
+    "软硬件运行环境",
+    "知识产权声明",
+]
 SUPPORTED_IMAGE_SUFFIXES = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff"}
 
 
@@ -115,8 +122,10 @@ def set_run_font(
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.italic = italic
-    if color is not None:
-        run.font.color.rgb = color
+    effective_color = color or BLACK
+    if effective_color != BLACK:
+        raise ManualConfigError("software-copyright manual text must be black (000000)")
+    run.font.color.rgb = effective_color
     r_pr = run._element.get_or_add_rPr()
     fonts = _get_or_add_fonts(r_pr)
     fonts.set(qn("w:eastAsia"), east_asia)
@@ -135,6 +144,7 @@ def set_style_font(
     style.font.name = latin
     style.font.size = Pt(size)
     style.font.bold = bold
+    style.font.color.rgb = BLACK
     r_pr = style._element.get_or_add_rPr()
     fonts = _get_or_add_fonts(r_pr)
     fonts.set(qn("w:eastAsia"), east_asia)
@@ -370,6 +380,33 @@ def add_body_paragraph(document: Document, block: dict[str, Any], style_info: di
     return paragraph
 
 
+def normalize_chapter_title(value: Any) -> str:
+    title = _text(value).strip()
+    return re.sub(r"^\s*(?:第\s*)?[0-9一二三四五六七八九十]+\s*(?:章)?[\s.、．-]*", "", title)
+
+
+def validate_required_chapters(chapters: list[Any], document_cfg: dict[str, Any]) -> None:
+    configured = document_cfg.get("required_chapters")
+    required = list(DEFAULT_REQUIRED_CHAPTERS)
+    if configured is not None:
+        supplied = [_text(value).strip() for value in _as_list(configured, "document.required_chapters")]
+        if [normalize_chapter_title(value) for value in supplied] != [
+            normalize_chapter_title(value) for value in required
+        ]:
+            raise ManualConfigError(
+                "document.required_chapters cannot override the four-chapter software-copyright structure"
+            )
+    actual = [
+        normalize_chapter_title(_as_mapping(chapter, "chapter").get("title"))
+        for chapter in chapters
+    ]
+    expected = [normalize_chapter_title(value) for value in required]
+    if actual != expected:
+        raise ManualConfigError(
+            "chapters must appear exactly in this order: " + " -> ".join(required)
+        )
+
+
 def add_heading(document: Document, block: dict[str, Any], state: RenderState) -> Any:
     text = _text(block.get("text") or block.get("title")).strip()
     if not text:
@@ -378,6 +415,8 @@ def add_heading(document: Document, block: dict[str, Any], state: RenderState) -
     if level not in (1, 2, 3):
         raise ManualConfigError("heading.level must be 1, 2, or 3")
     paragraph = document.add_heading(text, level=level)
+    for run in paragraph.runs:
+        run.font.color.rgb = BLACK
     paragraph.paragraph_format.keep_with_next = True
     paragraph.paragraph_format.page_break_before = bool(block.get("page_break_before", False))
     state.headings += 1
@@ -812,6 +851,7 @@ def build_document(payload: dict[str, Any], *, base_dir: Path) -> tuple[Document
     chapters = _as_list(payload.get("chapters"), "chapters")
     if not top_blocks and not chapters:
         raise ManualConfigError("at least one top-level block or chapter is required")
+    validate_required_chapters(chapters, document_cfg)
     render_blocks(
         document,
         top_blocks,
@@ -850,20 +890,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 JSON example:
   {
     "software": {"name": "Example System", "version": "V1.0"},
-    "document": {"title_suffix": "Software Design and User Manual", "title_separator": " "},
-    "chapters": [{
-      "title": "1 Introduction",
-      "sections": [{
-        "title": "1.1 Overview",
-        "blocks": [
-          {"type": "paragraph", "text": "A substantial verified description."},
-          {"type": "figure", "path": "figures/architecture.png",
-           "caption": "System architecture", "width_cm": 15.0},
-          {"type": "table", "caption": "Module summary",
-           "headers": ["Module", "Purpose"], "rows": [["Core", "Processing"]]}
-        ]
-      }]
-    }]
+    "document": {"title_suffix": "软件设计与使用说明书", "title_separator": ""},
+    "chapters": [
+      {"title": "1 软件设计说明", "sections": [{"title": "1.1 软件概述", "blocks": [{"type": "paragraph", "text": "基于源码与运行证据形成的设计说明。"}]}]},
+      {"title": "2 软件使用说明", "sections": [{"title": "2.1 功能操作", "blocks": [{"type": "paragraph", "text": "与真实界面一致的操作说明。"}]}]},
+      {"title": "3 软硬件运行环境", "sections": [{"title": "3.1 运行环境", "blocks": [{"type": "paragraph", "text": "经验证的软硬件运行条件。"}]}]},
+      {"title": "4 知识产权声明", "sections": [{"title": "4.1 声明范围", "blocks": [{"type": "paragraph", "text": "权属以正式申请表、证明材料和签章文件为准。"}]}]}
+    ]
   }
 
 Image paths are resolved relative to the JSON file unless --base-dir is set.

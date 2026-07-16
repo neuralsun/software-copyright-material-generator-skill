@@ -355,6 +355,7 @@ python scripts/audit_materials.py `
   --manifest "copyright-work\source_manifest.json" `
   --deposit-manifest "copyright-work\deposit_manifest.json" `
   --evidence "copyright-work\feature_evidence.json" `
+  --figures "copyright-work\figures_manifest.json" `
   --manual-content "copyright-work\manual_content.json" `
   --manual "copyright-work\<软件全称>_软件设计与使用说明书.docx" `
   --application "copyright-work\<软件全称>_软件著作权登记申请表.docx" `

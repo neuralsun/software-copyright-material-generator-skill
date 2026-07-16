@@ -114,7 +114,7 @@ def _normalize_version(value: str) -> str:
         cleaned = "V" + cleaned
     if not re.fullmatch(r"[Vv]\d+(?:\.\d+){1,3}(?:[-+._A-Za-z0-9]*)?", cleaned):
         raise ApplicationFormError(
-            "software.version 应采用 V1.0、V1.0.0 等明确版本格式"
+            "software.version 应采用用户确认的登记版本格式；新申请默认使用 V1.0"
         )
     return "V" + cleaned[1:]
 

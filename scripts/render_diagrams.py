@@ -21,12 +21,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 DEFAULT_PALETTE = [
-    ("#EAF3FF", "#2F79DA"),
-    ("#ECF8EE", "#46A15B"),
-    ("#FFF4E8", "#E48A2F"),
-    ("#F4EFFF", "#8A66C7"),
-    ("#FFF9E6", "#D3A428"),
-    ("#EAF8F8", "#2A9292"),
+    ("#FFFFFF", "#000000"),
+    ("#F2F2F2", "#000000"),
+    ("#E6E6E6", "#000000"),
+    ("#FAFAFA", "#000000"),
 ]
 FONT_CANDIDATES = [
     Path("C:/Windows/Fonts/msyh.ttc"),
@@ -398,7 +396,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
         width,
         height,
         color(spec.get("background_top"), "#FFFFFF"),
-        color(spec.get("background_bottom"), "#F4F9FF"),
+        color(spec.get("background_bottom"), "#FFFFFF"),
     )
     draw = ImageDraw.Draw(image)
     margin = _int(spec.get("margin"), 24, "architecture.margin")
@@ -407,7 +405,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
     if title:
         title_font = fonts.get(_int(spec.get("title_font_size"), 34, "architecture.title_font_size"), bold=True)
         tw, th = text_size(draw, title, title_font)
-        draw.text(((width - tw) / 2, max(12, (title_height - th) / 2)), title, font=title_font, fill=color(spec.get("title_color"), "#17324D"))
+        draw.text(((width - tw) / 2, max(12, (title_height - th) / 2)), title, font=title_font, fill=color(spec.get("title_color"), "#000000"))
 
     label_width = _int(spec.get("layer_label_width"), 150, "architecture.layer_label_width")
     layer_gap = _int(spec.get("layer_gap"), 16, "architecture.layer_gap")
@@ -429,7 +427,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
             pair_raw = palette_raw[layer_index % len(palette_raw)]
             if not isinstance(pair_raw, list) or len(pair_raw) != 2:
                 raise DiagramConfigError("architecture.palette entries must be [fill, outline]")
-            default_fill, default_outline = color(pair_raw[0], "#EAF3FF"), color(pair_raw[1], "#2F79DA")
+            default_fill, default_outline = color(pair_raw[0], "#FFFFFF"), color(pair_raw[1], "#000000")
         else:
             default_fill, default_outline = DEFAULT_PALETTE[layer_index % len(DEFAULT_PALETTE)]
         fill = color(layer.get("fill"), default_fill)
@@ -456,7 +454,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
         if layer_title:
             layer_title_font = fonts.get(_int(layer.get("title_font_size"), 24, "architecture layer.title_font_size"), bold=True)
             tw, _ = text_size(draw, layer_title, layer_title_font)
-            draw.text(((content_box.left + content_box.right - tw) / 2, content_box.top + 9), layer_title, font=layer_title_font, fill="#1C2F42")
+            draw.text(((content_box.left + content_box.right - tw) / 2, content_box.top + 9), layer_title, font=layer_title_font, fill="#000000")
 
         inner_left = content_box.left + 24
         inner_right = content_box.right - 24
@@ -485,7 +483,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
                 box,
                 label,
                 fonts.get(_int(node_cfg.get("font_size"), 20 if len(nodes) >= 6 else 22, "architecture node.font_size"), bold=bool(node_cfg.get("bold", False))),
-                fill=color(node_cfg.get("text_color"), "#17324D"),
+                fill=color(node_cfg.get("text_color"), "#000000"),
                 padding=12,
                 line_gap=5,
             )
@@ -498,7 +496,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
             draw_arrow(
                 draw,
                 points,
-                fill=color(edge.get("color"), "#637D96"),
+                fill=color(edge.get("color"), "#000000"),
                 width=_int(edge.get("width"), 3, "architecture edge.width"),
                 dashed=bool(edge.get("dashed", False)),
                 bidirectional=bool(edge.get("bidirectional", False)),
@@ -514,7 +512,7 @@ def render_architecture(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
                 draw_arrow(
                     draw,
                     [(x, upper.bottom + 2), (x, lower.top - 2)],
-                    fill=color(spec.get("connector_color"), "#73889B"),
+                    fill=color(spec.get("connector_color"), "#000000"),
                     width=3,
                     bidirectional=bool(spec.get("layer_connectors_bidirectional", True)),
                 )
@@ -587,7 +585,7 @@ def draw_flow_node(
         box,
         label,
         fonts.get(_int(node.get("font_size"), 21, "flow node.font_size"), bold=bool(node.get("bold", False))),
-        fill=color(node.get("text_color"), "#18334E"),
+        fill=color(node.get("text_color"), "#000000"),
         padding=18 if shape != "decision" else 34,
         line_gap=5,
     )
@@ -639,7 +637,7 @@ def render_flow(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
         width,
         height,
         color(spec.get("background_top"), "#FFFFFF"),
-        color(spec.get("background_bottom"), "#F7FBFF"),
+        color(spec.get("background_bottom"), "#FFFFFF"),
     )
     draw = ImageDraw.Draw(image)
     margin = _int(spec.get("margin"), 28, "flow.margin")
@@ -648,7 +646,7 @@ def render_flow(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
     if title:
         title_font = fonts.get(_int(spec.get("title_font_size"), 34, "flow.title_font_size"), bold=True)
         tw, th = text_size(draw, title, title_font)
-        draw.text(((width - tw) / 2, max(12, (title_height - th) / 2)), title, font=title_font, fill=color(spec.get("title_color"), "#17324D"))
+        draw.text(((width - tw) / 2, max(12, (title_height - th) / 2)), title, font=title_font, fill=color(spec.get("title_color"), "#000000"))
 
     lane_label_width = _int(spec.get("lane_label_width"), 180, "flow.lane_label_width")
     lane_gap = _int(spec.get("lane_gap"), 20, "flow.lane_gap")
@@ -714,13 +712,13 @@ def render_flow(spec: dict[str, Any], fonts: FontBook) -> Image.Image:
         draw_arrow(
             draw,
             points,
-            fill=color(edge.get("color"), "#637D96"),
+            fill=color(edge.get("color"), "#000000"),
             width=_int(edge.get("width"), 4, "flow edge.width"),
             dashed=bool(edge.get("dashed", False)),
             bidirectional=bool(edge.get("bidirectional", False)),
             label=_text(edge.get("label")).strip(),
             label_font=edge_font,
-            label_fill=color(edge.get("label_color"), "#40576E"),
+            label_fill=color(edge.get("label_color"), "#000000"),
         )
 
     for node in nodes:
