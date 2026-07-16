@@ -1,5 +1,5 @@
 ---
-name: generate-cn-software-copyright-kit
+name: software-copyright-material-generator-skill
 description: "Analyze a software source tree and generate or audit the three Chinese software-copyright materials: a complete four-chapter software design and user manual with evidence-backed functions, reviewed runtime screenshots, monochrome diagrams and black-only text; a maximally completed application-form draft with uninvented legal fields; and a general-deposit source-code document with reproducible first/last-page selection and real Office pagination. Includes Chrome-to-Codex-browser fallback for local UI capture. Use for 软件著作权、软著申请、说明书、申请表、源代码交存、界面截图、系统功能说明、前后各30页、60页代码、补正检查、代码雷同检查, or cross-material consistency review from an existing codebase."
 ---
 
