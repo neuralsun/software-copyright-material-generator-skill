@@ -36,6 +36,8 @@ DEFAULT_TEMPLATE = SCRIPT_DIR.parent / "assets" / "application-form-template.doc
 SCHEMA_VERSION = 1
 EXPECTED_ROWS = 37
 EXPECTED_COLUMNS = 13
+FEATURE_TEXT_MIN_CHARS = 500
+FEATURE_TEXT_MAX_CHARS = 1300
 RED = RGBColor(0xFF, 0x00, 0x00)
 BLACK = RGBColor(0x00, 0x00, 0x00)
 PLACEHOLDER_RE = re.compile(
@@ -573,9 +575,10 @@ def _render_form(document: Document, config: dict[str, Any]) -> dict[str, Any]:
         "function_and_technical_features",
     )
     feature_chars = _visible_char_count(feature_text)
-    if not 500 <= feature_chars <= 1000:
+    if not FEATURE_TEXT_MIN_CHARS <= feature_chars <= FEATURE_TEXT_MAX_CHARS:
         raise ApplicationFormError(
-            "software.function_and_technical_features 去除空白后的长度必须为 500–1000 字；"
+            "software.function_and_technical_features 去除空白后的长度必须为 "
+            f"{FEATURE_TEXT_MIN_CHARS}–{FEATURE_TEXT_MAX_CHARS} 字；"
             f"当前为 {feature_chars} 字"
         )
 

@@ -29,6 +29,8 @@ HEX_SHA256 = re.compile(r"[0-9a-f]{64}", re.I)
 XML_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 TEXT_PARTS = re.compile(r"^word/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+FEATURE_TEXT_MIN_CHARS = 500
+FEATURE_TEXT_MAX_CHARS = 1300
 DEFAULT_REQUIRED_MANUAL_CHAPTERS = [
     "软件设计说明",
     "软件使用说明",
@@ -913,8 +915,14 @@ def main() -> int:
             add_issue(errors, "program-lines-mismatch", "Application program count differs from the frozen source line count", expected=expected_program_lines)
         feature_text = table.cell(25, 1).text
         feature_chars = len(re.sub(r"\s+", "", feature_text))
-        if not 500 <= feature_chars <= 1000:
-            add_issue(errors, "feature-length", "Function and technical feature text must contain 500-1000 non-whitespace characters", count=feature_chars)
+        if not FEATURE_TEXT_MIN_CHARS <= feature_chars <= FEATURE_TEXT_MAX_CHARS:
+            add_issue(
+                errors,
+                "feature-length",
+                "Function and technical feature text must contain "
+                f"{FEATURE_TEXT_MIN_CHARS}-{FEATURE_TEXT_MAX_CHARS} non-whitespace characters",
+                count=feature_chars,
+            )
         configured_feature = str(software.get("function_and_technical_features") or config.get("function_and_technical_features") or "")
         if configured_feature and re.sub(r"\s+", "", configured_feature) != re.sub(r"\s+", "", feature_text):
             add_issue(errors, "feature-text-mismatch", "Application feature text differs from the authoritative configuration")

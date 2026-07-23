@@ -48,7 +48,7 @@
     "software_environment": "<操作系统、运行时、数据库、浏览器等及版本>",
     "programming_languages": "<语言及版本>",
     "source_line_count": 0,
-    "function_and_technical_features": "<去空白后500—1000字，待证据矩阵完成后填写>",
+    "function_and_technical_features": "<去空白后500—1300字，待证据矩阵完成后填写>",
     "first_publication_date": "",
     "first_publication_country": "",
     "first_publication_city": ""
@@ -123,7 +123,7 @@
 - `first_publication_date` 为空时国家、城市也必须为空；填写日期时两者必须同时填写。
 - 申请表模板最多容纳两名原始著作权人；更多主体必须使用当期官方载体处理。
 - 生成申请表前，把 `source_manifest.json/program_nonblank_lines` 原样写入 `software.source_line_count`。
-- `function_and_technical_features` 去除全部空白后必须为 500—1000 字。
+- `function_and_technical_features` 去除全部空白后必须为 500—1300 字。
 - `agent` 完全为空表示无代理；只要填写任一代理字段，就必须补齐名称、地址、邮编、联系人、手机和邮箱。
 
 法律字段最低完整性：每个 `copyright_owners[]` 填名称、证件号码、国籍/地区和地址；`applicant` 填名称、地址、邮编、联系人、手机和邮箱。电话、传真可按实际情况留空。申请人签章、签署日期及证照真伪仍须人工或平台核验。
