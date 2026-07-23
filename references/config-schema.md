@@ -186,7 +186,7 @@
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "figures": [
     {
       "id": "S01",
@@ -199,13 +199,20 @@
       "capture_tool": "codex_in_app_browser",
       "runtime_url": "http://127.0.0.1:<port>/<path>",
       "viewport": "1440x900",
+      "scenario_id": "S01",
+      "operation_path": "系统首页 → 图片检测 → 上传测试图片 → 开始检测",
+      "test_data": "虚构、脱敏测试图片，不记录账号或密码",
+      "sha256": "<截图文件SHA-256>",
       "review": {
         "software_name_correct": true,
+        "software_version_correct": true,
         "old_name_absent": true,
         "pii_absent_or_redacted": true,
         "credential_absent": true,
+        "secret_absent": true,
         "error_absent": true,
         "splice_absent": true,
+        "feature_evidence_supported": true,
         "manually_reviewed": true
       }
     }
@@ -215,7 +222,33 @@
 
 架构图和流程图使用 `kind=generated_diagram`，并列出其证据功能 ID。缺图占位使用 `kind=placeholder`，它永远不能通过最终门禁。
 
-`capture_tool` 使用可复核值，例如 `user_chrome`、`codex_in_app_browser`、`playwright_chromium` 或 `windows_computer_use`。Chrome 插件失败后改用 Codex 内置浏览器时仍记录实际使用的工具，不把插件错误写成系统功能错误。每个纳入说明书的 4 级功能必须至少被一张 `runtime_screenshot` 覆盖。
+`capture_tool` 使用实际工具值：`codex_in_app_browser`、`playwright_chromium`、`user_chrome`、`windows_snipping_tool`、`manual_upload`；为兼容旧材料，审计器仍接受如实使用的 `windows_computer_use`。每张运行截图必须记录运行 URL、视口、场景、用户操作路径、脱敏测试数据说明和 SHA-256。自动采集后全部 `review` 字段保持 `false`；只能在人工逐图确认后手工改为 `true`。截图 SHA-256 改变即表示旧复核失效。主配置 `confirmations.screenshots_reviewed` 也只能在人工作业完成后设为 `true`。每个纳入说明书的 4 级功能必须至少被一张 `runtime_screenshot` 覆盖。
+
+### 5.1 `screenshot_scenarios.json`
+
+```json
+{
+  "base_url": "http://127.0.0.1:3000",
+  "viewport": {"width": 1440, "height": 900},
+  "scenarios": [
+    {
+      "id": "S01",
+      "name": "系统首页",
+      "path": "/",
+      "feature_ids": ["F01"],
+      "operation_path": "打开系统首页",
+      "test_data": "无需业务数据",
+      "steps": [
+        {"action": "goto", "value": "/"},
+        {"action": "wait_for", "locator": {"type": "text", "value": "系统首页"}},
+        {"action": "screenshot", "filename": "S01_系统首页.png", "caption": "系统首页"}
+      ]
+    }
+  ]
+}
+```
+
+动作允许 `goto`、`fill`、`click`、`select`、`check`、`upload`、`wait_for`、`wait_for_url`、`screenshot`。定位器优先使用 `role`、`label`、`placeholder`、`text`、`test_id`；仅在无可访问定位信息时使用 `css`/`xpath`。秘密值写为 `{"env":"COPYRIGHT_TEST_PASSWORD"}` 或 `env:COPYRIGHT_TEST_PASSWORD`，不得直接写账号密码。建议文件名按 `S01_系统首页.png`、`S02_核心功能输入.png`、`S03_核心功能结果.png`、`S04_历史记录查询.png` 编排。
 
 ## 6. `diagrams.json`
 
@@ -263,6 +296,7 @@
   "document": {
     "title_suffix": "软件设计与使用说明书",
     "body_page_start": 1,
+    "core_feature_ids": ["F01"],
     "allow_missing_images": false,
     "allow_missing_captions": false,
     "required_chapters": ["软件设计说明", "软件使用说明", "软硬件运行环境", "知识产权声明"],
@@ -300,7 +334,7 @@
           "core_feature_ids": ["F01"],
           "blocks": [
             {"type": "paragraph", "text": "<入口、输入、处理、输出和异常反馈>"},
-            {"type": "figure", "path": "figures/S01.png", "caption": "核心功能运行界面", "width_cm": 15.0}
+            {"type": "figure", "figure_id": "S01", "path": "figures/S01.png", "feature_ids": ["F01"], "caption": "核心功能运行界面", "width_cm": 15.0}
           ]
         }
       ]
@@ -343,7 +377,7 @@
 }
 ```
 
-使用 `feature_ids` 标记一般已实现功能，使用 `core_feature_ids` 标记配有运行截图或作为核心操作说明的功能；后者必须达到证据等级 4。四章顺序是生成器和终检的默认硬约束。块类型：`paragraph` 支持 `text`、`alignment`、`bold`、`italic`；软著说明书不允许通过 `color` 设置非黑色文字。`heading` 支持 `text`、`level`；`figure` 支持 `path`、`caption`、`width_cm`；`table` 支持 `caption`、`headers`、`rows`、`widths_cm`。图片路径相对 JSON 文件或 `--base-dir` 解析。目录和页码是动态域，必须经 Office 刷新。
+使用 `feature_ids` 标记一般已实现功能，使用 `core_feature_ids` 标记配有运行截图或作为核心操作说明的功能；后者必须达到证据等级 4。建议在 `document.core_feature_ids` 汇总全套核心 ID，生成器也会合并章节/小节中的同名字段。正式模式下，运行截图块还要写 `figure_id` 和 `feature_ids`，并与 Manifest 一致。四章顺序是生成器和终检的默认硬约束。块类型：`paragraph` 支持 `text`、`alignment`、`bold`、`italic`；软著说明书不允许通过 `color` 设置非黑色文字。`heading` 支持 `text`、`level`；`figure` 支持 `figure_id`、`feature_ids`、`path`、`caption`、`width_cm`；`table` 支持 `caption`、`headers`、`rows`、`widths_cm`。图片路径相对 JSON 文件或 `--base-dir` 解析。目录和页码是动态域，必须经 Office 刷新。
 
 ## 8. `deposit_config.json`
 

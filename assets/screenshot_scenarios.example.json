@@ -1,0 +1,35 @@
+{
+  "base_url": "http://127.0.0.1:3000",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "scenarios": [
+    {
+      "id": "S01",
+      "name": "系统首页",
+      "path": "/",
+      "feature_ids": ["F01"],
+      "operation_path": "打开系统首页",
+      "test_data": "无需业务数据",
+      "steps": [
+        {
+          "action": "goto",
+          "value": "/"
+        },
+        {
+          "action": "wait_for",
+          "locator": {
+            "type": "text",
+            "value": "系统首页"
+          }
+        },
+        {
+          "action": "screenshot",
+          "filename": "S01_系统首页.png",
+          "caption": "系统首页"
+        }
+      ]
+    }
+  ]
+}

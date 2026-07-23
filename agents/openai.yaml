@@ -1,4 +1,4 @@
 interface:
   display_name: "软著三件套完整版生成器"
-  short_description: "从源码生成完整四章说明书、浏览器截图、申请表和代码交存材料"
-  default_prompt: "使用 $software-copyright-material-generator-skill 分析当前源码，自动补全功能说明与界面截图并生成可提交前复核的软著三件套。"
+  short_description: "从源码生成四章说明书、经复核运行截图、申请表和代码交存材料"
+  default_prompt: "使用 $software-copyright-material-generator-skill 分析当前源码，优先通过内置浏览器、Playwright 或人工回退取得真实运行截图，完善功能说明并生成可提交前复核的软著三件套。"

@@ -9,6 +9,7 @@ structure and typography.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -38,6 +39,11 @@ DEFAULT_REQUIRED_CHAPTERS = [
     "知识产权声明",
 ]
 SUPPORTED_IMAGE_SUFFIXES = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff"}
+RUNTIME_REVIEW_FIELDS = {
+    "software_name_correct", "software_version_correct", "old_name_absent", "pii_absent_or_redacted",
+    "credential_absent", "secret_absent", "error_absent", "splice_absent",
+    "feature_evidence_supported", "manually_reviewed",
+}
 
 
 class ManualConfigError(ValueError):
@@ -885,6 +891,120 @@ def load_payload(path: Path) -> dict[str, Any]:
     return _as_mapping(data, "root")
 
 
+def iter_figure_blocks(value: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(value, dict):
+        if _text(value.get("type")).strip().lower() == "figure":
+            yield value
+        for child in value.values():
+            yield from iter_figure_blocks(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from iter_figure_blocks(child)
+
+
+def collect_core_feature_ids(value: Any) -> set[str]:
+    result: set[str] = set()
+    if isinstance(value, dict):
+        raw = value.get("core_feature_ids")
+        if isinstance(raw, list):
+            result.update(str(item).strip() for item in raw if str(item).strip())
+        single = value.get("core_feature_id")
+        if isinstance(single, str) and single.strip():
+            result.add(single.strip())
+        for child in value.values():
+            result.update(collect_core_feature_ids(child))
+    elif isinstance(value, list):
+        for child in value:
+            result.update(collect_core_feature_ids(child))
+    return result
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_formal_figures(payload: dict[str, Any], manual_base: Path, manifest_path: Path) -> None:
+    """Block formal output unless every referenced figure has valid provenance.
+
+    Runtime screenshots additionally require an unchanged SHA-256, feature
+    linkage and explicit human approval.  Draft mode deliberately skips this
+    gate so a working document may contain visible missing-image notices.
+    """
+    manifest = load_payload(manifest_path)
+    document_cfg = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+    if document_cfg.get("allow_missing_images") is True:
+        raise ManualConfigError("formal mode cannot enable document.allow_missing_images")
+    raw_items = manifest.get("figures")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ManualConfigError("formal mode requires a non-empty figures_manifest.json")
+    by_id: dict[str, dict[str, Any]] = {}
+    by_path: dict[Path, dict[str, Any]] = {}
+    for raw in raw_items:
+        item = _as_mapping(raw, "figures_manifest.figures[]")
+        figure_id = _text(item.get("id")).strip()
+        path_text = _text(item.get("path")).strip()
+        if not figure_id or not path_text:
+            raise ManualConfigError("every figure manifest entry requires id and path")
+        if figure_id in by_id:
+            raise ManualConfigError(f"duplicate figure id in manifest: {figure_id}")
+        recorded = Path(path_text).expanduser()
+        recorded = (recorded if recorded.is_absolute() else manifest_path.parent / recorded).resolve()
+        if recorded in by_path:
+            raise ManualConfigError(f"duplicate figure path in manifest: {recorded}")
+        by_id[figure_id] = item
+        by_path[recorded] = item
+
+    used_ids: set[str] = set()
+    runtime_coverage: set[str] = set()
+    for block in iter_figure_blocks(payload):
+        block_path = resolve_asset_path(block.get("path"), manual_base)
+        requested_id = _text(block.get("figure_id") or block.get("id")).strip()
+        item = by_id.get(requested_id) if requested_id else by_path.get(block_path)
+        if item is None:
+            raise ManualConfigError(f"formal figure is absent from figures_manifest.json: {block_path}")
+        figure_id = _text(item.get("id")).strip()
+        manifest_path_text = _text(item.get("path")).strip()
+        recorded = Path(manifest_path_text).expanduser()
+        recorded = (recorded if recorded.is_absolute() else manifest_path.parent / recorded).resolve()
+        if block_path != recorded:
+            raise ManualConfigError(f"manual path differs from manifest for figure {figure_id}")
+        if not recorded.is_file():
+            raise ManualConfigError(f"manifest figure file does not exist: {recorded}")
+        if figure_id in used_ids:
+            raise ManualConfigError(f"the same figure is embedded more than once: {figure_id}")
+        used_ids.add(figure_id)
+        if _text(item.get("kind")).strip().lower() != "runtime_screenshot":
+            continue
+        actual_hash = file_sha256(recorded)
+        if _text(item.get("sha256")).strip().lower() != actual_hash:
+            raise ManualConfigError(f"runtime screenshot changed; refresh hash and repeat human review: {figure_id}")
+        review = item.get("review") if isinstance(item.get("review"), dict) else {}
+        missing = sorted(field for field in RUNTIME_REVIEW_FIELDS if review.get(field) is not True)
+        if missing:
+            raise ManualConfigError(f"runtime screenshot {figure_id} is not fully reviewed: {', '.join(missing)}")
+        manifest_features = {str(v).strip() for v in item.get("feature_ids", []) if str(v).strip()} if isinstance(item.get("feature_ids"), list) else set()
+        block_raw_features = block.get("feature_ids", [block.get("feature_id")] if block.get("feature_id") else [])
+        block_features = {str(v).strip() for v in block_raw_features if str(v).strip()} if isinstance(block_raw_features, list) else set()
+        if not manifest_features or not block_features or not block_features.issubset(manifest_features):
+            raise ManualConfigError(f"runtime screenshot {figure_id} lacks a matching feature_id link in the manual")
+        runtime_coverage.update(block_features)
+        manifest_caption = re.sub(r"^图\s*\d+\s*", "", _text(item.get("caption")).strip())
+        block_caption = re.sub(r"^图\s*\d+\s*", "", _text(block.get("caption")).strip())
+        if not manifest_caption or block_caption != manifest_caption:
+            raise ManualConfigError(f"manual caption differs from reviewed manifest caption for {figure_id}")
+
+    core = collect_core_feature_ids(payload)
+    if not core:
+        raise ManualConfigError("formal mode requires core_feature_ids for screenshot coverage checks")
+    missing_core = sorted(core - runtime_coverage)
+    if missing_core:
+        raise ManualConfigError(f"core features lack reviewed runtime screenshots: {', '.join(missing_core)}")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     example = r'''
 JSON example:
@@ -915,6 +1035,8 @@ Word, WPS Office, or LibreOffice before final submission.
         type=Path,
         help="base directory for relative figure paths (default: JSON file directory)",
     )
+    parser.add_argument("--figures-manifest", type=Path, help="required in formal mode")
+    parser.add_argument("--mode", choices=("draft", "formal"), default="draft")
     return parser.parse_args(argv)
 
 
@@ -926,6 +1048,10 @@ def main(argv: list[str] | None = None) -> int:
         raise ManualConfigError("--output must use the .docx extension")
     base_dir = args.base_dir.expanduser().resolve() if args.base_dir else input_path.parent
     payload = load_payload(input_path)
+    if args.mode == "formal":
+        if not args.figures_manifest:
+            raise ManualConfigError("--figures-manifest is required in formal mode")
+        validate_formal_figures(payload, base_dir, args.figures_manifest.expanduser().resolve())
     document, state = build_document(payload, base_dir=base_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     document.save(output_path)

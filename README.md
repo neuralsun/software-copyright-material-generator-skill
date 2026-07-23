@@ -104,11 +104,13 @@ software-copyright-material-generator-skill/
 ├─ SKILL.md
 ├─ README.md
 ├─ requirements.txt
+├─ requirements-screenshot.txt
 ├─ LICENSE
 ├─ agents/
 │  └─ openai.yaml
 ├─ assets/
-│  └─ application-form-template.docx
+│  ├─ application-form-template.docx
+│  └─ screenshot_scenarios.example.json
 ├─ references/
 │  ├─ application-template-map.json
 │  ├─ config-schema.md
@@ -117,6 +119,7 @@ software-copyright-material-generator-skill/
 │  └─ qa-gates.md
 └─ scripts/
    ├─ scan_project.py
+   ├─ capture_runtime_screenshots.py
    ├─ render_diagrams.py
    ├─ build_manual.py
    ├─ build_application_form.py
@@ -142,6 +145,17 @@ software-copyright-material-generator-skill/
 - Office 软件支持 COM 自动化。
 
 没有 Office 时仍可生成 DOCX 初稿和图片，但无法完成真实分页门禁，不应把结果标记为可提交。
+
+### 可选截图环境
+
+截图能力与纯文档生成依赖分离。可用的 Codex/ChatGPT 内置浏览器优先；VS Code Codex、Codex CLI 或内置浏览器不可用时，安装 Playwright Chromium：
+
+```powershell
+python -m pip install -r requirements-screenshot.txt
+python -m playwright install chromium
+```
+
+统一回退顺序为：内置浏览器 → Playwright Chromium → 用户人工截图 → 生成人工截图清单并保持草稿。自动截图和自动检查均不能替代人工复核。
 
 ## 快速开始
 
@@ -218,6 +232,21 @@ python scripts/scan_project.py `
 
 阅读界面、路由/API、业务服务、数据访问和外部调用，编制 `feature_evidence.json`。证据等级 3 及以上的功能可以作为已实现功能写入说明书；等级 4 还必须包含隔离运行验证和经复核的真实截图。
 
+在没有内置浏览器的环境中，使用可编辑的 `screenshot_scenarios.json` 执行真实页面操作。默认视口为 1440×900，正式批量采集使用 `--headless true`；第一次调试可使用 `--headless false`：
+
+```powershell
+python scripts/capture_runtime_screenshots.py `
+  --base-url "http://127.0.0.1:3000" `
+  --output-dir "copyright-work\figures" `
+  --manifest "copyright-work\figures_manifest.json" `
+  --scenario "copyright-work\screenshot_scenarios.json" `
+  --headless true `
+  --viewport-width 1440 `
+  --viewport-height 900
+```
+
+脚本支持 `goto`、`fill`、`click`、`select`、`check`、`upload`、`wait_for`、`wait_for_url`、`screenshot`。测试账号密码通过环境变量传入，不得写进仓库。每张图会记录真实 URL、视口、功能 ID、场景、操作路径、测试数据说明及 SHA-256，且人工复核项一律初始化为 `false`。缺 Playwright 时脚本会生成 `manual_screenshot_checklist.md`，不会伪造截图。
+
 ```powershell
 python scripts/render_diagrams.py `
   --input "copyright-work\diagrams.json" `
@@ -231,8 +260,12 @@ python scripts/render_diagrams.py `
 ```powershell
 python scripts/build_manual.py `
   --input "copyright-work\manual_content.json" `
-  --output "copyright-work\<软件全称>_软件设计与使用说明书.docx"
+  --output "copyright-work\<软件全称>_软件设计与使用说明书.docx" `
+  --mode formal `
+  --figures-manifest "copyright-work\figures_manifest.json"
 ```
+
+正式模式要求 `manual_content.json` 的 `document.core_feature_ids` 明确列出核心功能，并只嵌入 Manifest 中路径、哈希、图题、功能映射和全部人工复核均通过的图片。草稿可省略上述两个参数并允许明确缺图提示，但不得进入最终目录。
 
 生成申请表底稿：
 
@@ -335,6 +368,7 @@ python scripts/audit_materials.py `
 - 说明书声称的功能缺少完整代码证据；
 - 核心功能未运行验证，或缺少经复核的真实截图；
 - 截图含旧名称、个人信息、磁盘路径、错误堆栈或拼接痕迹；
+- 截图 `capture_tool`、运行 URL、功能映射或 SHA-256 缺失/不一致，或截图更新后未重新人工复核；
 - 说明书不是固定四章结构，或正文出现非黑色文字；
 - Word/WPS 未完成真实分页，或 PDF 与 DOCX 页数不一致。
 

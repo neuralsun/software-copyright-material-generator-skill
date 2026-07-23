@@ -39,12 +39,23 @@ DEFAULT_REQUIRED_MANUAL_CHAPTERS = [
 ]
 FIGURE_REVIEW_FLAGS = {
     "software_name_correct",
+    "software_version_correct",
     "old_name_absent",
     "pii_absent_or_redacted",
     "credential_absent",
+    "secret_absent",
     "error_absent",
     "splice_absent",
+    "feature_evidence_supported",
     "manually_reviewed",
+}
+ALLOWED_CAPTURE_TOOLS = {
+    "codex_in_app_browser",
+    "playwright_chromium",
+    "user_chrome",
+    "windows_snipping_tool",
+    "manual_upload",
+    "windows_computer_use",
 }
 
 
@@ -510,6 +521,8 @@ def audit_figures_manifest(
     }
     runtime_coverage: set[str] = set()
     identifiers: set[str] = set()
+    resolved_paths: set[str] = set()
+    content_hashes: dict[str, str] = {}
     runtime_count = 0
     for item in items:
         if not isinstance(item, dict):
@@ -529,11 +542,26 @@ def audit_figures_manifest(
             continue
         path = Path(raw_path).expanduser()
         path = (path if path.is_absolute() else figures_base / path).resolve()
+        normalized_path = str(path).casefold()
+        if normalized_path in resolved_paths:
+            add_issue(errors, "figure-duplicate-path", "The same figure file is referenced by more than one manifest entry", figure_id=figure_id, path=str(path))
+        resolved_paths.add(normalized_path)
         if not path.is_file() or path.stat().st_size <= 0:
             add_issue(errors, "figure-missing", "Figure file does not exist", figure_id=figure_id, path=str(path))
             continue
         if kind == "runtime_screenshot":
             runtime_count += 1
+            actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            recorded_sha256 = str(item.get("sha256") or "").strip().lower()
+            if not HEX_SHA256.fullmatch(recorded_sha256):
+                add_issue(errors, "figure-sha256", "Runtime screenshot has no valid SHA-256", figure_id=figure_id)
+            elif recorded_sha256 != actual_sha256:
+                add_issue(errors, "figure-changed", "Runtime screenshot changed after review; update the hash and repeat every human review", figure_id=figure_id)
+            previous_id = content_hashes.get(actual_sha256)
+            if previous_id:
+                add_issue(errors, "figure-duplicate-file", "Identical screenshot content is referenced by different figure ids", figure_id=figure_id, duplicate_of=previous_id)
+            else:
+                content_hashes[actual_sha256] = figure_id
             if not valid_screenshot(path):
                 add_issue(errors, "figure-invalid-screenshot", "Runtime screenshot is unreadable or too small", figure_id=figure_id)
             feature_ids = {
@@ -549,8 +577,14 @@ def audit_figures_manifest(
                 else:
                     runtime_coverage.add(feature_id)
             capture_tool = str(item.get("capture_tool") or item.get("capture_method") or "").strip()
-            if not capture_tool:
-                add_issue(errors, "figure-capture-provenance", "Runtime screenshot does not record its browser/capture tool", figure_id=figure_id)
+            if capture_tool not in ALLOWED_CAPTURE_TOOLS:
+                add_issue(errors, "figure-capture-provenance", "Runtime screenshot capture_tool is missing or unsupported", figure_id=figure_id, capture_tool=capture_tool)
+            for field in ("caption", "captured_at", "source", "runtime_url", "viewport", "scenario_id", "operation_path", "test_data"):
+                if not str(item.get(field) or "").strip():
+                    add_issue(errors, "figure-provenance-field", "Runtime screenshot provenance is incomplete", figure_id=figure_id, field=field)
+            runtime_url = str(item.get("runtime_url") or "").strip().lower()
+            if runtime_url and not runtime_url.startswith(("http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost")):
+                add_issue(warnings, "figure-nonlocal-url", "Runtime screenshot URL is not localhost/127.0.0.1; verify that no production system was used", figure_id=figure_id)
             review = item.get("review") if isinstance(item.get("review"), dict) else {}
             missing_flags = sorted(flag for flag in FIGURE_REVIEW_FLAGS if review.get(flag) is not True)
             if missing_flags:
